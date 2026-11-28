@@ -36,8 +36,12 @@ from scripts.raspi_source_verified_summary_discovery import (
 from scripts.raspi_summary_claim_evidence import read_approved_revision
 
 MAX_PER_CHANNEL=5
-MAX_UNION=15
-MAX_PAIRED_UNION=10
+# The native passage and source-firstunit defaults remain independently
+# bounded to five. Only an explicit deeper *generated-summary* navigation
+# channel may use up to ten source-verified original documents.
+MAX_SUMMARY_LEXICAL_PER_CHANNEL=10
+MAX_UNION=20
+MAX_PAIRED_UNION=15
 # Publisher originals are SHA-streamed; extracted text is not. Keep their
 # independent memory/read constraints separate, as in the native source audit.
 MAX_SINGLE_ORIGINAL_BYTES=128*1024*1024
@@ -45,13 +49,22 @@ MAX_SINGLE_DERIVED_BYTES=64*1024*1024
 MAX_TOTAL_SOURCE_BYTES=256*1024*1024
 
 
-def independent_original_union(native:dict, lexical:dict)->list[dict]:
-    """No score fusion. Keep native order, then append new lexical candidates."""
-    if (not isinstance(native,dict) or not isinstance(lexical,dict)
+def independent_original_union(
+    native:dict, lexical:dict, *, lexical_top:int=MAX_PER_CHANNEL,
+)->list[dict]:
+    """No score fusion. Keep native order, then append verified lexical sources.
+
+    A default five plus five candidate cap stays unchanged. The opt-in
+    separate summary lexical channel can extend to ten originals, never
+    making one interleaved ranking or copying unverifiable source content.
+    """
+    if (type(lexical_top) is not int
+            or not 1<=lexical_top<=MAX_SUMMARY_LEXICAL_PER_CHANNEL
+            or not isinstance(native,dict) or not isinstance(lexical,dict)
             or native.get('count')!=len(native.get('results',[]))
             or native.get('count',0)>MAX_PER_CHANNEL
             or lexical.get('originals_physically_verified_and_returned')!=len(lexical.get('candidates',[]))
-            or len(lexical['candidates'])>MAX_PER_CHANNEL
+            or len(lexical['candidates'])>lexical_top
             or not isinstance(native.get('final_current_original_source_revision_check'),dict)):
         raise ValueError('missing complete independent source-revision search receipts')
     guard=native['final_current_original_source_revision_check']
@@ -95,7 +108,7 @@ def independent_original_union(native:dict, lexical:dict)->list[dict]:
                             'native_original_passage_sha256':None,
                             'lexical_summary_candidate_rank':rank,
                             'both_independently_returned':False}
-    if not 0<=len(selected)<=MAX_PAIRED_UNION:
+    if not 0<=len(selected)<=min(MAX_PAIRED_UNION,MAX_PER_CHANNEL+lexical_top):
         raise ValueError('unbounded source discovery union')
     return list(selected.values())
 
@@ -347,9 +360,12 @@ def paired_verified_discovery(
     ledger:Path=DEFAULT_ORIGINAL_ROOT/'_management/status.json',
     include_source_firstunit:bool=False,
     verify_firstunit_pdf_pages:int=0,
+    summary_lexical_top:int|None=None,
 )->dict:
+    lexical_top=top if summary_lexical_top is None else summary_lexical_top
     if (not isinstance(query,str) or not 1<=len(query)<=600 or not query.strip()
             or type(top) is not int or not 1<=top<=MAX_PER_CHANNEL
+            or type(lexical_top) is not int or not top<=lexical_top<=MAX_SUMMARY_LEXICAL_PER_CHANNEL
             or type(include_source_firstunit) is not bool
             or type(verify_firstunit_pdf_pages) is not int
             or not 0<=verify_firstunit_pdf_pages<=3
@@ -379,9 +395,9 @@ def paired_verified_discovery(
         lexical=verified_original_discovery(
             query=query,source_map=sm,native_db=db,
             original_root=original_root,derived_root=derived_root,
-            ledger=ledger,limit=top,porter=True,
+            ledger=ledger,limit=lexical_top,porter=True,
         )
-        union=independent_original_union(native,lexical)
+        union=independent_original_union(native,lexical,lexical_top=lexical_top)
         firstunit=None
         if include_source_firstunit:
             firstunit=verified_publisher_firstunit_candidates(
@@ -401,6 +417,9 @@ def paired_verified_discovery(
         'created_at_utc':datetime.now(timezone.utc).isoformat(),
         'query_sha256':hashlib.sha256(query.encode('utf8')).hexdigest(),
         'requested_per_channel':top,
+        **({'opt_in_independent_summary_lexical_top':lexical_top,
+            'independent_verified_summary_navigation_rank_not_native_similarity':True}
+           if summary_lexical_top is not None else {}),
         'native_source_search_seconds':round(native_seconds,3),
         'native_read_sqlite_busy_retry_limit':1,
         'elapsed_seconds':round(time.monotonic()-started,3),
@@ -415,7 +434,10 @@ def paired_verified_discovery(
             'publisher_firstunit_candidates_dropped':firstunit['unverified_source_candidates_excluded'],
             'source_firstunit_is_original_derived_text_not_physical_pdf_quote':True,
             'three_independent_channel_ranks_not_fused':True,
-            'up_to_fifteen_source_verified_candidate_documents_not_a_new_top_five':True}
+            'up_to_fifteen_source_verified_candidate_documents_not_a_new_top_five':(
+            lexical_top<=MAX_PER_CHANNEL),
+        **({'up_to_twenty_originals_in_explicitly_broadened_independent_navigation_not_fused':True}
+           if lexical_top>MAX_PER_CHANNEL else {})}
            if firstunit is not None else {}),
         'unique_original_candidates':len(union),
         'candidates_returned_by_both':sum(int(x['both_independently_returned']) for x in union),
@@ -450,6 +472,8 @@ def main()->None:
     ap.add_argument('--top',type=int,default=5)
     ap.add_argument('--include-source-firstunit',action='store_true',
                     help='Opt-in original first-unit search across all approved originals; extra RAM-only 17k-source index, slow cold start; no score fusion')
+    ap.add_argument('--summary-lexical-top',type=int,
+                    help='Opt-in up to ten separately source-verified generated-summary lexical originals. Default remains the requested native top (maximum five); no fusion, increased original read/verification cost.')
     ap.add_argument('--verify-firstunit-pdf-pages',type=int,default=0,
                     help='With --include-source-firstunit, independently check original physical PDF page for at most 0-3 ranked PDF candidates; no answer truth claim')
     ap.add_argument('--private-output',type=Path,required=True)
@@ -463,6 +487,7 @@ def main()->None:
         query=args.query,top=args.top,
         include_source_firstunit=args.include_source_firstunit,
         verify_firstunit_pdf_pages=args.verify_firstunit_pdf_pages,
+        summary_lexical_top=args.summary_lexical_top,
     )
     fd=os.open(dest,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
     with os.fdopen(fd,'w',encoding='utf8') as f:

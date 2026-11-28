@@ -128,6 +128,30 @@ class ThreeIndependentOriginalSourcesTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'untrusted original firstunit'):
             augment_original_union_with_firstunit(base,too_many)
 
+    def test_explicit_expanded_summary_lexical_originals_keep_independent_source_ranks(self):
+        source=native(paths=tuple(f'docs/native_{i}.html' for i in range(5)))
+        lexical_ten=lexical(paths=tuple(f'docs/summary_{i}.html' for i in range(10)))
+        with self.assertRaisesRegex(ValueError,'missing complete independent'):
+            independent_original_union(source,lexical_ten)
+        larger=independent_original_union(source,lexical_ten,lexical_top=10)
+        self.assertEqual(15,len(larger))
+        self.assertEqual([None]*5+list(range(1,11)),
+                         [z['lexical_summary_candidate_rank'] for z in larger])
+        self.assertEqual(list(range(1,6))+[None]*10,
+                         [z['native_source_passage_rank'] for z in larger])
+        self.assertTrue(all(z['original_path'].startswith('docs/') for z in larger))
+        expanded=augment_original_union_with_firstunit(
+            larger,firstunit(paths=tuple(f'docs/source_{i}.html' for i in range(5))))
+        self.assertEqual(20,len(expanded))
+        self.assertEqual(list(range(1,6)),[z['publisher_firstunit_porter_rank'] for z in expanded[-5:]])
+        self.assertTrue(all(z['native_source_passage_rank'] is None for z in expanded[-5:]))
+        with self.assertRaises(ValueError):
+            independent_original_union(source,lexical(paths=tuple(f'x/{i}.html' for i in range(11))),
+                                       lexical_top=10)
+        for invalid in (0,-1,11,True,3.5):
+            with self.subTest(invalid=invalid),self.assertRaises(ValueError):
+                independent_original_union(source,lexical_ten,lexical_top=invalid)
+
     def test_existing_paired_union_without_firstunit_unmodified(self):
         rows=independent_original_union(native(),lexical())
         self.assertTrue(all('publisher_firstunit_porter_rank' not in r for r in rows))
@@ -360,6 +384,42 @@ class FinalPhysicalOriginalRecheckTest(unittest.TestCase):
             self.assertEqual(0,extended['candidates_found_exclusively_by_original_firstunit'])
             self.assertFalse(extended['no_aggregate_confidence_or_factual_answer'] is False)
             self.assertEqual(1,extended['final_current_publisher_source_byte_and_native_file_identity_check']['originals_reverified_after_both_channels'])
+
+    def test_explicit_wider_summary_lexical_request_preserves_default_native_and_firstunit_caps(self):
+        from unittest.mock import patch
+        from scripts.raspi_paired_original_discovery import paired_verified_discovery
+        self.sm.commit();self.native.commit()
+        sm_path=self.home/'source-expanded-map.sqlite3'
+        db_path=self.home/'source-expanded-native.sqlite3'
+        with sqlite3.connect(sm_path) as c:self.sm.backup(c)
+        with sqlite3.connect(db_path) as c:self.native.backup(c)
+        existing=native(paths=(self.path,),sha=self.sha)
+        summary=lexical(paths=(self.path,),sha=self.sha)
+        extra=firstunit(paths=(self.path,),sha=self.sha,derivative_sha=self.dsha,
+                        native_id=42,preview_text=self.derivedfile.read_text())
+        kwargs={'query':'verified source query','top':1,
+                'include_source_firstunit':True,
+                'original_root':self.orig,'derived_root':self.derived,
+                'source_map_path':sm_path,'native_db_path':db_path,
+                'ledger':self.ledger}
+        with patch('scripts.raspi_paired_original_discovery.native_low_memory_search',return_value=existing) as n,             patch('scripts.raspi_paired_original_discovery.verified_original_discovery',return_value=summary) as l,             patch('scripts.raspi_paired_original_discovery.verified_publisher_firstunit_candidates',return_value=extra) as f:
+            default=paired_verified_discovery(**kwargs)
+            self.assertNotIn('opt_in_independent_summary_lexical_top',default)
+            self.assertEqual(1,l.call_args.kwargs['limit'])
+            self.assertTrue(default['up_to_fifteen_source_verified_candidate_documents_not_a_new_top_five'])
+            wide=paired_verified_discovery(**kwargs,summary_lexical_top=10)
+            self.assertEqual(10,l.call_args.kwargs['limit'])
+            self.assertEqual(1,n.call_args.kwargs['top'])
+            self.assertEqual(1,f.call_args.kwargs['top'])
+            self.assertEqual(10,wide['opt_in_independent_summary_lexical_top'])
+            self.assertTrue(wide['up_to_twenty_originals_in_explicitly_broadened_independent_navigation_not_fused'])
+            self.assertFalse(wide['up_to_fifteen_source_verified_candidate_documents_not_a_new_top_five'])
+            self.assertTrue(wide['no_aggregate_confidence_or_factual_answer'])
+            self.assertEqual(1,wide['unique_original_candidates'])
+            self.assertEqual(1,wide['final_current_publisher_source_byte_and_native_file_identity_check']['originals_reverified_after_both_channels'])
+        for invalid in (0,-1,11,True,3.4):
+            with self.subTest(invalid=invalid),self.assertRaisesRegex(ValueError,'bounded paired source'):
+                paired_verified_discovery(**kwargs,summary_lexical_top=invalid)
 
     def test_native_busy_retry_only_for_one_known_readonly_sqlite_conflict(self):
         from unittest.mock import patch

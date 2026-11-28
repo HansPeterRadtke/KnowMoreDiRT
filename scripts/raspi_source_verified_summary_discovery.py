@@ -195,7 +195,11 @@ def verified_original_discovery(
     porter:bool=True,max_scan:int=80,
     publisher_url_prefix:str|None=None,
 ):
-    if (type(limit) is not int or not 1<=limit<=5
+    # Existing callers retain their default five verified original sources.
+    # A caller explicitly requesting a wider independent *navigation*
+    # channel can inspect up to ten separately source-verified summaries.
+    # No native ranking, model, extraction or score weights change.
+    if (type(limit) is not int or not 1<=limit<=10
             or type(max_scan) is not int or not limit<=max_scan<=100):
         raise ValueError('invalid bounded current-original result count')
     publisher_url_prefix=validate_publisher_url_prefix(publisher_url_prefix)

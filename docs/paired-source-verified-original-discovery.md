@@ -82,6 +82,127 @@ source-verified archived HTML article search, or the standalone
 summary-lexical discovery with its explicit publisher URL directory argument.
 Do not claim that an unscoped paired result establishes the requested edition.
 
+## When the general native ranking misses an archived original
+
+The three-channel optional `scripts/raspi_paired_original_discovery.py`
+can run the existing native original-passage reader, the current source-
+verified native-summary-word reader, and (only with the explicit
+`--include-source-firstunit` option) the full offline original-document
+**first source unit** reader. It preserves the three independent ranks
+and rehashes every returned original and derivative against the approved
+acquisition receipt, source map and unique native FileDB identity *again
+after joining*. There is no shared calibrated score, global native ranking
+change, invented factual answer or atomic cross-store source-generation
+claim. This is an opt-in navigation expansion, not a new search default.
+
+A reproducible previously frozen material-roughness question exposed
+a genuine native summary ranking gap: neither of the two separately
+source-confirmed PBRT and Epic original HTML references appeared
+in the native semantic top ten. The independent, global first-source-unit
+lexical search across **seventeen thousand seven hundred and fifteen**
+approved existing originals found both at ranks one and two of each
+lexical channel, with separate literal/Porter order. A real paired
+three-channel run of the *unchanged* question returned both as **original
+first-unit-only candidates**: neither was found in the five current
+native-passage candidates or the five source-verified generated-summary
+lexical candidates. The final original/derived SHA and native identity
+proof covered all thirteen returned documents, and no source content
+or native index was changed.
+
+To reproduce a single research question, after normal Raspi resource
+broker approval for the local E5 query encoder and ephemeral original
+source previews:
+
+~~~bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:. \
+  /data/var/knowmoredirt/semantic-venv/bin/python \
+  scripts/raspi_paired_original_discovery.py \
+  'How do physically based rendering references describe roughness effects on surface reflections, including microscopic imperfections and physically meaningful material parameter values?' \
+  --top 5 --include-source-firstunit \
+  --private-output '/data/var/knowmoredirt/knowledge-library/search-audit/NEW-PRIVATE-THREE-CHANNEL.json'
+~~~
+
+The previously missing Blender normal-map edition was independently
+rechecked against its original publisher HTML source, current extracted
+derivative and unique native FileDB ID, then retrieved at **rank eight**
+of the wider source-summary lexical view. Its other known relevant
+Blender edition remained at **rank two**. The fresh opt-in
+three-channel result returned both originals, with 17 distinct source
+documents having complete final original/derived byte rechecks. Across
+the **five genuinely executed** frozen multi-positive questions, the
+existing five-per-channel paired approach returned ten of eleven
+predeclared source references. Reusing the four existing current
+read-only source receipts and replacing only the formerly missing
+Blender result with this opt-in wider view returned **all eleven**.
+A separate independent readback rehashed every one of those original
+publisher files and derivatives, checked their current source-map/native
+IDs and exactly matched predeclared original labels. No production
+default, source summary, native embedding or ranking weight was changed.
+This is an unranked **source-presence** result, not recall@10 of one
+combined model, proof of factual answer correctness or a guarantee
+about other topics.
+
+The default five candidates per channel remain unchanged. A newly
+available **optional** `--summary-lexical-top 10` widens only the
+independently verified current generated-summary-word channel (not
+the native-passage limit or source-first-unit limit), because a
+previously frozen Blender normal-map source occurred at **eighth**
+place in current summary-word ranking although the old default
+paired five-source view missed it. Up to fifteen original identities
+from the first two independent source channels and up to five more
+from the explicitly selected first-source-unit channel can be
+returned. A total physical-byte SHA validation budget remains in
+force. Source records outside the requested bounded count are not
+called irrelevant. More candidates cost more original-file reads
+and do not establish higher factual correctness. If a source byte
+limit or a concurrent source revision prevents full proof, the
+query must fail rather than silently return a partial set.
+
+For repeatable source-retrieval QA, two **already frozen** local
+populations were measured together: twenty-seven earlier
+independent one-source questions and five multi-positive
+questions covering eleven separately verified relevant originals.
+These are **not newly unseen blind** holdouts. The original
+first-source-unit lookup processed all seventeen thousand seven
+hundred and fifteen approved source previews through bounded RAM
+FTS, without downloads or vector writes. The independent
+full-byte publisher/source-map/native-ID validator found,
+at a lexical top ten, **twenty of twenty-seven** known originals
+in the older independent questions and **ten of eleven** known
+source labels in the five multi-positive questions. The label
+set is non-exhaustive: an unlabelled result is NOT assumed
+irrelevant or false. Results are candidate-source coverage, not
+source-entailment or accuracy probabilities.
+
+The reusable frozen validation command is
+`scripts/raspi_frozen_original_firstunit_recall.py`. It requires
+the complete **previously saved** original-gold SHA for each
+immutable input population, a matching thirty-two-question
+read-only first-unit source report, and a **new owner-private**
+output path. It rehashes all known-positive current publisher
+original and derived bytes, verifies completed acquisition
+receipts, current source-map revisions and unique native
+FileDB original IDs, and refuses changes to the original
+frozen question population, altered source snippets, wrong
+original IDs or factually misleading source-proof flags.
+The optional `--current-native-multi-report` takes the
+separately source-attested five-question native result and
+reports only *presence in either independent reader*; it
+**never invents one ranked top ten for their union**.
+It is safe to run this validator again against a NEW actual
+source report and the SAME predeclared gold, not to regenerate
+or rewrite the gold after seeing rankings. Current source
+hashes, evidence and exact re-run commands are preserved
+privately in the Raspi source-audit tree; no raw original
+paper or private owner recording belongs in Git.
+
+The first-source-unit reader necessarily misses distant
+source sections, PDF figures, and other image-only knowledge.
+Before citing any scientific assertion, follow the original
+source passage and verify physical PDF page or actual
+publisher HTML evidence. Current index writers must not be
+stopped or modified merely to improve a benchmark score.
+
 ## Small, literal-folder first-unit search when global vectors miss the source
 
 The existing `scripts/raspi_publisher_firstunit_discovery.py` has an
