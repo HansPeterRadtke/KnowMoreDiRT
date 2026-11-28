@@ -1,6 +1,7 @@
 """Source-bound provisional original PDF glyph rescue search hard negatives."""
 from __future__ import annotations
 import hashlib
+import json
 from pathlib import Path
 import sqlite3
 from tempfile import TemporaryDirectory
@@ -137,9 +138,16 @@ class ProvisionalOriginalPdfSearchTests(unittest.TestCase):
           independent_verifier=fake)
         hit=r['accepted_provisional_ranked_pages'][0]
         self.assertEqual('same_page_second_extractor_exact_phrase_corroborated',hit['status'])
-        self.assertTrue(hit['independent_poppler_same_physical_page_passage_corroborated'])
+        self.assertIs(hit['independent_poppler_same_physical_page_passage_corroborated'], True)
         self.assertFalse(hit['factual_answer_verified'])
         self.assertEqual(1,len(calls))
+        # A successful original-page SHA validation used to return a
+        # regex Match object, breaking the private original-source JSON.
+        current=json.loads(json.dumps(r))
+        self.assertIs(current['accepted_provisional_ranked_pages'][0][
+            'independent_poppler_same_physical_page_passage_corroborated'],True)
+        self.assertEqual('b'*64,current['accepted_provisional_ranked_pages'][0][
+            'original_pdf_page_text_cross_extractor_sha256'])
 
     def test_unique_match_elsewhere_is_not_corroboration_of_original_page(self):
         def elsewhere(_pdf,_sha,passages):
@@ -175,6 +183,9 @@ class ProvisionalOriginalPdfSearchTests(unittest.TestCase):
         self.assertFalse(hit['factual_answer_verified'])
         self.assertEqual(2,len(seen))
         self.assertGreater(seen[1],1)
+        self.assertIs(result['accepted_provisional_ranked_pages'][0][
+            'independent_poppler_same_physical_page_passage_corroborated'],False)
+        self.assertIsInstance(json.loads(json.dumps(result)),dict)
 
     def test_one_generic_matching_query_word_is_not_a_dual_extractor_answer(self):
         # Even a genuinely identical generic figure caption must not become

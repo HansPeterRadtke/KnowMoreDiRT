@@ -262,7 +262,12 @@ def provisional_alternate_query_hits(query:str, pages:list[dict],*,top:int=4,
                 and proof.get('page')==physical
                 and proof.get('basis')=='derivative_label_confirmed'
                 and isinstance(proof.get('page_text_sha256'),str)
-                and SHA.fullmatch(proof['page_text_sha256']))
+                and SHA.fullmatch(proof['page_text_sha256']) is not None)
+        # Always expose a JSON-serializable *boolean*: re.fullmatch returns
+        # a Match object when a valid physical-page SHA was corroborated.
+        # In the successful path that Match previously leaked into the
+        # evidence report and prevented saving the source provenance result.
+        assert type(corroborated) is bool
         fragment={'exact_same_page_corroborated_fragment':None,
                   'whole_provisional_text_verified_by_excerpt':False,
                   'factual_answer_verified':False}

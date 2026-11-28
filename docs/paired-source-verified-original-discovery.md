@@ -430,6 +430,75 @@ the original document when consequential, preserve license and
 acquisition rights, and never infer a missing passage from an
 omitted corrupted or unverified physical page.
 
+## Read-only original physical PDF glyph search without an earlier stage
+
+The new **raspi_current_original_pdf_glyph_search.py** operator also searches
+an already acquired, approved publisher original PDF that has *no previous
+private physical-page repair staging receipt*. It complements, but does
+not replace, the existing staged-only source-page alternate reader and
+ordinary first-page/full-PDF/native search.
+
+The caller names one exact approved original relative PDF path, **one
+actual physical publisher PDF page**, a short query and a NEW private
+output path. The reader verifies its current complete source-map revision,
+completed acquisition receipt, full original publisher PDF bytes and SHA,
+complete extracted derivative SHA, unique native FileDB original ID and
+actual original physical page count. It checks all of these again after
+the source-specific page search. It preserves the separately recorded
+publisher publication landing-page URL and raw PDF download URL, which
+can legitimately differ. Cached derived page labels are *not*
+assumed to be actual publisher PDF page numbers.
+
+The bounded local Ghostscript text is a **provisional candidate**.
+A separate Poppler extraction of the SAME verified publisher PDF physical
+page can corroborate a literal bounded excerpt, or else a shorter exact
+fragment. Such proof verifies only those source characters on that
+specific original page. It never verifies the entire machine-extracted
+page, visual charts, mathematical layout or scientific conclusions.
+A non-corroborated machine excerpt is explicitly provisional, never
+an authoritative quotation. The private report has boolean verification
+statuses and exact original/derivative SHA; one matching sentence cannot
+confer authority on its surrounding machine text. No model, OCR, source
+download, source-index change, native write or live repair cutover occurs.
+
+Example in the KnowMoreDiRT repository on Raspi, with resource-broker
+admission for the bounded Ghostscript/Poppler CPU task:
+
+~~~bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:. \
+  /data/var/knowmoredirt/semantic-venv/bin/python \
+  scripts/raspi_current_original_pdf_glyph_search.py \
+  'per instance surprisal information gain matched context' \
+  --original-path 'ai-agents/2026-evidence-and-grounding/icml-2026-wu26am.pdf' \
+  --physical-page 19 \
+  --output '/data/var/knowmoredirt/knowledge-library/search-audit/UNIQUE-PRIVATE-PHYSICAL-PAGE-RESULT.json'
+~~~
+
+During a source-specific read-only comparison, a previously archived
+research PDF with thirty-eight true physical pages had already been
+privately staged with correctly numbered page units, despite its old
+cached source map reaching label fifty-two. The existing stage still
+has damaged physical pages twenty-three and twenty-four. A separate
+twenty-page approved original has physical page nineteen damaged in
+its text layer, with no earlier repair stage. A bounded original-PDF
+Ghostscript preview yielded **candidate text** for all three.
+Independent same-page Poppler corroborated a complete selected excerpt
+on physical page twenty-four, and an exact short fragment on
+physical page twenty-three; the third page remains **provisional**
+without source-confirmed words. All original and current extracted
+source hashes and native document identities were rechecked before
+and after, with no index mutation or external publication.
+
+The source-attestation parser also now returns a literal JSON boolean
+for a successful independent same-page verification. Previously it
+leaked a Python regular-expression Match object on successful checks,
+which made saving the actual source evidence fail. Regression tests
+cover both the positive full-excerpt and short-fragment cases.
+This is a narrow source-presence discovery and safer provenance
+interface, not an independent retrieval-accuracy or visual-fidelity
+benchmark. Any persistent repaired derivative still requires a
+separate source-version-pinned coordinated authorization.
+
 ## Optional third channel: the original publisher first source unit
 
 The earlier two-channel command remains the default. When a query is phrased
