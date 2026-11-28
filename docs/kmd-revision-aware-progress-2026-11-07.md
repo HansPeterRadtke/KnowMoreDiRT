@@ -224,3 +224,92 @@ If a real writer holds its lock beyond the configured
 bounded wait, the read fails and can be investigated;
 never start an unapproved second FileDB, discard its
 evidence or change the live writer as a workaround.
+
+## Incremental audited completion journal without dropped original sources
+
+Original recursive-summary workers write real
+`KMD_HIERARCHICAL_DOCUMENT_COMPLETE` events to their existing systemd
+journals. The earlier one-shot provenance script sampled only the
+newest limited group. If more than that group finished between
+independent checks, a worker could silently skip older completions
+during quality review, despite the original indexed documents
+remaining intact. This was a **gap in incremental verification**,
+not evidence that a native source was lost.
+
+The new optional `scripts/raspi_incremental_summary_integrity.py`
+reads **the oldest pending completion records first**, across both
+existing source-summary worker journals, in batches of at most
+**twenty-five events**. Each journal event only selects a candidate:
+the auditor independently rehashes the approved publisher original
+and current derivative, checks the original approved acquisition
+receipt and current source-map revision, and validates the **entire**
+current native summary graph including source spans, child coverage,
+summary text, stored vector bytes and provenance identifiers. A
+completion-event message alone is not acceptance.
+
+On its first invocation the operator must specify the **exact UTC
+beginning** of the desired review interval. The prior interval is
+*not* implicitly covered. Later invocations supply an existing
+owner-private cursor file, which is accepted only when its preceding
+private immutable audit receipt still matches its SHA and recorded
+last event. Before resuming, it additionally demands that the
+previous exact source-completion cursor is still present in the
+retained systemd journal; if the journal has been vacuumed
+or lost that record, the auditor fails closed instead of
+mistaking an unavailable prior cursor for an empty new page.
+The program never uses a journal `-n` newest tail,
+never guesses a missing checkpoint, and never silently advances
+past an unverified or oversized original. A failed or stale source
+receives a private failure receipt and leaves the cursor unchanged.
+An empty journal page also leaves the cursor unchanged.
+
+A private non-blocking cursor lock prevents two overlapping owner
+turns from racing to replace the last verified event. The lock
+applies only to the optional audit checkpoint, never the two
+production indexers or either source database. It safely refuses
+concurrent auditors instead of waiting or resetting someone else's
+progress. Retain the small cursor file, completed SHA-checked audit
+receipts, and lock file in owner-private storage; do not commit
+originals, source text or private audit logs to Git.
+
+After securing an appropriate resource-broker CPU/RAM admission,
+the first example invocation is:
+
+~~~bash
+PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 \
+  /data/var/knowmoredirt/semantic-venv/bin/python \
+  scripts/raspi_incremental_summary_integrity.py \
+  --source-map /data/var/knowmoredirt/knowledge-library/semantic/source-map.sqlite3 \
+  --native-db /data/var/knowmoredirt/knowledge-library/filesystem.sqlite3 \
+  --original-root '/data/var/Knowledge Library' \
+  --derived-root /data/var/knowmoredirt/knowledge-library/semantic/text \
+  --completed-ledger '/data/var/Knowledge Library/_management/status.json' \
+  --cursor-file /data/var/knowmoredirt/knowledge-library/search-audit/PRIVATE-AUDIT/cursor.json \
+  --output /data/var/knowmoredirt/knowledge-library/search-audit/PRIVATE-AUDIT/page01.json \
+  --initial-since '2026-11-28 10:40:00' --batch-size 4 --max-original-mib 128
+~~~
+
+For a subsequent page use a **new output filename**, the same
+cursor path and the same bounds, but **omit `--initial-since`**.
+The current approved private evidence sample used two successive
+four-event pages and independently verified **eight original files**
+and **thirty-four current native summary nodes**, with no duplicate
+event cursors or source-graph failures. A third read found no
+new completion events and correctly left the cursor unchanged.
+When two more completed originals appeared later in the actual
+worker journal, the same source cursor continued with those
+two records, bringing the observed total to **ten distinct current
+originals and forty-six current native summary nodes**. None of
+the previous eight events was replayed. This proves resumable
+retrieval **from that explicitly selected UTC start while the
+systemd journal retains the required records**, not coverage
+of the entire historic journal or all seventeen thousand originals.
+
+The audit is strictly read-only toward original library/source-map/
+FileDB content: it neither downloads papers nor invokes a model nor
+writes summary vectors. Each audit receipt and checkpoint is local,
+private and owner-owned. A genuine source revision or missing native
+child causes a fail-closed source failure that must be investigated;
+it is not authority to delete, refresh or rewrite an original.
+The underlying original/derived/source-map and native SQLite
+writers are separate and are **not** an atomic shared generation.
